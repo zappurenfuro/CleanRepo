@@ -271,16 +271,17 @@ async def download_visualization():
         # Get the base name of the CV file (without extension)
         base_name = os.path.splitext(os.path.basename(current_cv_file))[0]
         
-        # Look for the visualization PNG file
-        visualization_file = os.path.join(current_results_dir, f"{base_name}_matches.png")
+        # Look for any PNG files in the results directory
+        png_files = glob.glob(os.path.join(current_results_dir, "*.png"))
         
-        if not os.path.exists(visualization_file):
-            # If not found, try to find any PNG file with a similar name
-            png_files = glob.glob(os.path.join(current_results_dir, f"{base_name}*.png"))
-            if png_files:
-                visualization_file = png_files[0]
-            else:
-                raise HTTPException(status_code=404, detail="Visualization file not found")
+        if not png_files:
+            raise HTTPException(status_code=404, detail="No visualization files found")
+        
+        # Sort by modification time to get the most recent one
+        png_files.sort(key=os.path.getmtime, reverse=True)
+        visualization_file = png_files[0]
+        
+        logging.info(f"Found visualization file: {visualization_file}")
         
         # Return the file as a response
         return FileResponse(
@@ -301,22 +302,15 @@ async def check_visualization():
         return {"available": False, "message": "No CV has been uploaded yet"}
     
     try:
-        # Get the base name of the CV file (without extension)
-        base_name = os.path.splitext(os.path.basename(current_cv_file))[0]
+        # Look for any PNG files in the results directory
+        png_files = glob.glob(os.path.join(current_results_dir, "*.png"))
         
-        # Look for the visualization PNG file
-        visualization_file = os.path.join(current_results_dir, f"{base_name}_matches.png")
-        
-        if not os.path.exists(visualization_file):
-            # If not found, try to find any PNG file with a similar name
-            png_files = glob.glob(os.path.join(current_results_dir, f"{base_name}*.png"))
-            if png_files:
-                visualization_file = png_files[0]
-                return {"available": True, "filename": os.path.basename(visualization_file)}
-            else:
-                return {"available": False, "message": "Visualization file not found"}
-        
-        return {"available": True, "filename": os.path.basename(visualization_file)}
+        if png_files:
+            # Sort by modification time to get the most recent one
+            png_files.sort(key=os.path.getmtime, reverse=True)
+            return {"available": True, "filename": os.path.basename(png_files[0])}
+        else:
+            return {"available": False, "message": "No visualization files found"}
     except Exception as e:
         logging.error(f"Error checking visualization: {str(e)}")
         return {"available": False, "message": str(e)}
