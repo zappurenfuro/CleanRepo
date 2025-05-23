@@ -1,6 +1,6 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import os
@@ -10,15 +10,12 @@ import logging
 import time
 import json
 import traceback
+import glob
 from pathlib import Path
 import sys
 
 # Import the resume scanner model
 from scp import TFIDFEnhancedResumeScanner
-
-import os
-import logging
-import glob
 
 def debug_paths():
     """Debug function to print paths and check for embedding files"""
@@ -207,9 +204,15 @@ async def scan_text(text: str = Form(...), top_n: int = Form(5)):
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
+# Add these new variables to track the current session
+current_cv_file = None
+current_results_dir = None
+
 @app.post("/scan/file", response_model=ScanResponse)
 async def scan_file(file: UploadFile = File(...), top_n: int = Form(5)):
     """Scan resume file and match against job titles"""
+    global current_cv_file, current_results_dir
+    
     if scanner is None:
         raise HTTPException(status_code=503, detail="Model not initialized. Call /initialize first.")
     
@@ -229,6 +232,10 @@ async def scan_file(file: UploadFile = File(...), top_n: int = Form(5)):
         
         # Process the resume file
         results = scanner.process_resume_file(temp_file_path, top_n=top_n)
+        
+        # Store the current CV file name and results directory for later use
+        current_cv_file = file.filename
+        current_results_dir = scanner.results_dir
         
         # Convert DataFrame to list of dictionaries
         matches = []
@@ -253,6 +260,66 @@ async def scan_file(file: UploadFile = File(...), top_n: int = Form(5)):
         # Clean up the temp file
         if os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
+
+@app.get("/download/visualization")
+async def download_visualization():
+    """Download the visualization PNG file for the current CV"""
+    if current_cv_file is None or current_results_dir is None:
+        raise HTTPException(status_code=404, detail="No CV has been uploaded yet")
+    
+    try:
+        # Get the base name of the CV file (without extension)
+        base_name = os.path.splitext(os.path.basename(current_cv_file))[0]
+        
+        # Look for the visualization PNG file
+        visualization_file = os.path.join(current_results_dir, f"{base_name}_matches.png")
+        
+        if not os.path.exists(visualization_file):
+            # If not found, try to find any PNG file with a similar name
+            png_files = glob.glob(os.path.join(current_results_dir, f"{base_name}*.png"))
+            if png_files:
+                visualization_file = png_files[0]
+            else:
+                raise HTTPException(status_code=404, detail="Visualization file not found")
+        
+        # Return the file as a response
+        return FileResponse(
+            path=visualization_file,
+            filename=f"{base_name}_visualization.png",
+            media_type="image/png"
+        )
+    except Exception as e:
+        logging.error(f"Error downloading visualization: {str(e)}")
+        logging.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Add an endpoint to check if a visualization is available
+@app.get("/check/visualization")
+async def check_visualization():
+    """Check if a visualization is available for download"""
+    if current_cv_file is None or current_results_dir is None:
+        return {"available": False, "message": "No CV has been uploaded yet"}
+    
+    try:
+        # Get the base name of the CV file (without extension)
+        base_name = os.path.splitext(os.path.basename(current_cv_file))[0]
+        
+        # Look for the visualization PNG file
+        visualization_file = os.path.join(current_results_dir, f"{base_name}_matches.png")
+        
+        if not os.path.exists(visualization_file):
+            # If not found, try to find any PNG file with a similar name
+            png_files = glob.glob(os.path.join(current_results_dir, f"{base_name}*.png"))
+            if png_files:
+                visualization_file = png_files[0]
+                return {"available": True, "filename": os.path.basename(visualization_file)}
+            else:
+                return {"available": False, "message": "Visualization file not found"}
+        
+        return {"available": True, "filename": os.path.basename(visualization_file)}
+    except Exception as e:
+        logging.error(f"Error checking visualization: {str(e)}")
+        return {"available": False, "message": str(e)}
 
 @app.post("/evaluate", response_model=dict)
 async def evaluate_model(k_values: List[int] = [3, 5, 10], relevance_threshold: Optional[float] = None):
