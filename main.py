@@ -16,6 +16,60 @@ import sys
 # Import the resume scanner model
 from scp import TFIDFEnhancedResumeScanner
 
+import os
+import logging
+import glob
+
+def debug_paths():
+    """Debug function to print paths and check for embedding files"""
+    print("\n===== PATH DEBUGGING =====")
+    print(f"Current working directory: {os.getcwd()}")
+    
+    # Check input/output directories
+    input_dir = os.path.join(os.getcwd(), "input")
+    output_dir = os.path.join(os.getcwd(), "output")
+    
+    print(f"Input directory exists: {os.path.exists(input_dir)}")
+    print(f"Output directory exists: {os.path.exists(output_dir)}")
+    
+    # List all tfidf_enhanced directories
+    print("\nSearching for tfidf_enhanced directories:")
+    tfidf_dirs = []
+    for root, dirs, files in os.walk(output_dir):
+        for dir in dirs:
+            if dir.startswith("tfidf_enhanced_"):
+                tfidf_dir = os.path.join(root, dir)
+                tfidf_dirs.append(tfidf_dir)
+                print(f"  Found: {tfidf_dir}")
+    
+    # Check for embedding files
+    print("\nSearching for embedding files:")
+    embedding_files = []
+    for tfidf_dir in tfidf_dirs:
+        for root, dirs, files in os.walk(tfidf_dir):
+            for file in files:
+                if file == "tfidf_bge_embeddings.pkl":
+                    embedding_file = os.path.join(root, file)
+                    embedding_files.append(embedding_file)
+                    print(f"  Found: {embedding_file}")
+                    print(f"  File size: {os.path.getsize(embedding_file) / (1024*1024):.2f} MB")
+                    print(f"  Last modified: {os.path.getmtime(embedding_file)}")
+    
+    # Check file permissions
+    print("\nChecking file permissions:")
+    for embedding_file in embedding_files:
+        try:
+            with open(embedding_file, 'rb') as f:
+                # Just read a small part to test access
+                f.read(10)
+            print(f"  Can read: {embedding_file}")
+        except Exception as e:
+            print(f"  ERROR reading {embedding_file}: {str(e)}")
+    
+    print("\n===== END PATH DEBUGGING =====")
+
+# Add this to your main.py's startup_event function
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -233,6 +287,22 @@ async def startup_event():
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
             logging.info(f"Created directory: {directory}")
+    
+    # Debug paths and file existence
+    try:
+        import glob
+        logging.info(f"Current working directory: {os.getcwd()}")
+        logging.info(f"Input directory exists: {os.path.exists(str(INPUT_DIR))}")
+        logging.info(f"Output directory exists: {os.path.exists(str(OUTPUT_DIR))}")
+        
+        # List all PKL files in the output directory
+        pkl_files = glob.glob(str(OUTPUT_DIR / "**/*.pkl"), recursive=True)
+        logging.info(f"Found {len(pkl_files)} PKL files in output directory")
+        for pkl_file in pkl_files:
+            file_size = os.path.getsize(pkl_file) / (1024 * 1024)
+            logging.info(f"  {pkl_file} ({file_size:.2f} MB)")
+    except Exception as e:
+        logging.error(f"Error in path debugging: {str(e)}")
     
     # Check if input files exist
     input_files_exist = all(

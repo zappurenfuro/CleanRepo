@@ -6,12 +6,13 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./:/app
-      - ./input:/app/input
-      - ./output:/app/output
-      - ./cv_dummy:/app/cv_dummy
+      - ./input:/app/input:rw
+      - ./output:/app/output:rw
+      - ./cv_dummy:/app/cv_dummy:rw
+      - model-data:/app/models:rw
     environment:
       - PYTHONUNBUFFERED=1
+      - DEBUG=1
     deploy:
       resources:
         limits:
@@ -22,3 +23,7 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+
+volumes:
+  model-data:
+    driver: local

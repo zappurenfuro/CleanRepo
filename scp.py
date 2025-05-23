@@ -2020,7 +2020,7 @@ class TFIDFEnhancedResumeScanner:
         return weighted_text
     
     def create_embeddings(self, batch_size=32):
-        """Create TF-IDF weighted BGE embeddings."""
+        """Create TF-IDF weighted BGE embeddings with improved file finding."""
         if self.df is None:
             raise ValueError("Data not loaded. Call load_data() first.")
         
@@ -2031,14 +2031,54 @@ class TFIDFEnhancedResumeScanner:
         # Check if embeddings already exist in pickle format
         embeddings_file = os.path.join(self.results_dir, 'tfidf_bge_embeddings.pkl')
         
-        # Load or create TF-IDF weighted BGE embeddings
+        # Log the path we're checking
+        logging.info(f"Checking for embeddings at: {embeddings_file}")
+        
+        # If not found in the default location, search for it in the output directory
+        if not os.path.exists(embeddings_file):
+            logging.info("Embeddings not found in default location, searching in output directory...")
+            
+            # Search for any tfidf_bge_embeddings.pkl file in the output directory
+            embedding_files = []
+            for root, dirs, files in os.walk(self.output_folder):
+                for file in files:
+                    if file == 'tfidf_bge_embeddings.pkl':
+                        embedding_path = os.path.join(root, file)
+                        embedding_files.append(embedding_path)
+                        logging.info(f"Found embedding file: {embedding_path}")
+            
+            # If multiple files found, use the most recent one
+            if embedding_files:
+                embedding_files.sort(key=os.path.getmtime, reverse=True)
+                embeddings_file = embedding_files[0]
+                logging.info(f"Using most recent embedding file: {embeddings_file}")
+        
+        # Load embeddings if found
         if os.path.exists(embeddings_file):
             logging.info(f"Loading existing TF-IDF weighted BGE embeddings from {embeddings_file}")
-            loaded_embeddings = load_from_pickle(embeddings_file)
-            if loaded_embeddings is not None:
-                self.embeddings = loaded_embeddings
-                print(f"{Fore.GREEN}✅ Loaded TF-IDF weighted BGE embeddings from {embeddings_file}{Style.RESET_ALL}")
-                return self.embeddings
+            try:
+                # Check file size and modification time
+                file_size_mb = os.path.getsize(embeddings_file) / (1024 * 1024)
+                mod_time = time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(os.path.getmtime(embeddings_file)))
+                logging.info(f"Embeddings file size: {file_size_mb:.2f} MB, Last modified: {mod_time}")
+                
+                # Try to load the embeddings
+                loaded_embeddings = load_from_pickle(embeddings_file)
+                if loaded_embeddings is not None:
+                    self.embeddings = loaded_embeddings
+                    print(f"{Fore.GREEN}✅ Loaded TF-IDF weighted BGE embeddings from {embeddings_file}{Style.RESET_ALL}")
+                    
+                    # Verify the shape of the loaded embeddings
+                    if isinstance(self.embeddings, np.ndarray):
+                        logging.info(f"Loaded embeddings shape: {self.embeddings.shape}")
+                    
+                    return self.embeddings
+                else:
+                    logging.warning(f"Failed to load embeddings from {embeddings_file}, will create new embeddings")
+            except Exception as e:
+                logging.error(f"Error loading embeddings: {str(e)}")
+                logging.error(traceback.format_exc())
+                logging.warning("Will create new embeddings due to loading error")
         
         logging.info("Creating TF-IDF weighted BGE embeddings...")
         
@@ -2048,8 +2088,8 @@ class TFIDFEnhancedResumeScanner:
             weighted_texts.append(self.apply_tfidf_weighting(text))
         
         self.embeddings = self._create_embeddings(weighted_texts, 
-                                                 embeddings_file, 
-                                                 batch_size=batch_size)
+                                                embeddings_file, 
+                                                batch_size=batch_size)
         
         return self.embeddings
     
