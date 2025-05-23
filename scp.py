@@ -2443,7 +2443,15 @@ class TFIDFEnhancedResumeScanner:
         if 'error' in results:
             return
         
+        # Get the base name of the file
         base_name = os.path.splitext(os.path.basename(file_path))[0]
+        
+        # Check if this is a temporary file (starts with 'tmp')
+        if base_name.startswith('tmp'):
+            # Use a generic title instead of the temp filename
+            title = 'Resume Analysis - Top Job Matches'
+        else:
+            title = f'Top Matches for {base_name}'
         
         # Create a bar chart of top matches
         plt.figure(figsize=(12, 8))
@@ -2459,7 +2467,7 @@ class TFIDFEnhancedResumeScanner:
         plt.barh(range(len(display_titles)), scores, color='#2ecc71')
         plt.yticks(range(len(display_titles)), display_titles)
         plt.xlabel('Similarity Score (%)')
-        plt.title(f'Top Matches for {base_name}')
+        plt.title(title)  # Use the cleaned title here
         plt.xlim(0, 100)
         
         # Add score labels
@@ -2468,8 +2476,13 @@ class TFIDFEnhancedResumeScanner:
         
         plt.tight_layout()
         
-        # Save the chart
-        chart_file = os.path.join(self.results_dir, f"{base_name}_matches.png")
+        # Save the chart with a meaningful name regardless of input filename
+        if base_name.startswith('tmp'):
+            output_filename = "resume_matches.png"
+        else:
+            output_filename = f"{base_name}_matches.png"
+        
+        chart_file = os.path.join(self.results_dir, output_filename)
         plt.savefig(chart_file)
         plt.close()
         
