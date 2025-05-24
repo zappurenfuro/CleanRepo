@@ -979,7 +979,7 @@ class ResumeEvaluationMetrics:
             return False
 
 class TFIDFEnhancedResumeScanner:
-    """Enhanced ResumeScanner with TF-IDF weighted BGE embeddings."""
+    """Enhanced ResumeScanner with TF-IDF weighted BGE embeddings and chunking support."""
     
     def __init__(self, input_folder: str, output_folder: str, cv_folder: str = None):
         """Initialize the ResumeScanner with input and output folders."""
@@ -997,6 +997,10 @@ class TFIDFEnhancedResumeScanner:
         self.results_saved = {}  # Track saved files to avoid duplicates
         self.evaluator = ResumeEvaluationMetrics()  # Initialize evaluator
         self.optimal_threshold = 1.0  # Default threshold that will be optimized
+        
+        # Chunking parameters
+        self.chunk_size = 512  # Maximum tokens per chunk
+        self.chunk_overlap = 50  # Overlap between chunks
         
         # Create output directory
         self.results_dir = os.path.join(self.output_folder, f"tfidf_enhanced_{int(time.time())}")
@@ -1525,6 +1529,126 @@ class TFIDFEnhancedResumeScanner:
         save_as_pickle(metadata, model_file)
         logging.info(f"Saved model metadata to {model_file}")
     
+    def chunk_text(self, text: str, chunk_size: int = None, overlap: int = None) -> List[str]:
+        """
+        Split text into chunks with overlap to handle long texts that exceed token limits.
+        
+        Args:
+            text: Text to chunk
+            chunk_size: Maximum tokens per chunk (defaults to self.chunk_size)
+            overlap: Overlap between chunks in tokens (defaults to self.chunk_overlap)
+            
+        Returns:
+            List of text chunks
+        """
+        if chunk_size is None:
+            chunk_size = self.chunk_size
+        if overlap is None:
+            overlap = self.chunk_overlap
+            
+        # Simple approximation: 4 characters per token on average
+        chars_per_token = 4
+        chunk_length = chunk_size * chars_per_token
+        overlap_length = overlap * chars_per_token
+        
+        if len(text) <= chunk_length:
+            return [text]
+        
+        chunks = []
+        start = 0
+        
+        while start < len(text):
+            end = start + chunk_length
+            
+            # If this is not the last chunk, try to break at word boundary
+            if end < len(text):
+                # Look for the last space within the chunk
+                last_space = text.rfind(' ', start, end)
+                if last_space > start:
+                    end = last_space
+            
+            chunk = text[start:end].strip()
+            if chunk:
+                chunks.append(chunk)
+            
+            # Move start position with overlap
+            start = max(start + 1, end - overlap_length)
+            
+            # Prevent infinite loop
+            if start >= len(text):
+                break
+        
+        logging.info(f"Split text into {len(chunks)} chunks (chunk_size={chunk_size}, overlap={overlap})")
+        return chunks
+    
+    def create_chunked_embeddings(self, texts: List[str], output_file: str, batch_size: int = 32) -> np.ndarray:
+        """
+        Create embeddings using chunking for long texts.
+        
+        Args:
+            texts: List of texts to embed
+            output_file: Path to save embeddings
+            batch_size: Batch size for processing
+            
+        Returns:
+            Array of embeddings
+        """
+        logging.info(f"Creating chunked embeddings for {len(texts)} texts...")
+        
+        # Process each text by chunking
+        all_embeddings = []
+        
+        # Use fine-tuned model if available, otherwise use base model
+        embedding_model = self.fine_tuned_model if self.fine_tuned_model is not None else self.model
+        
+        for text in tqdm(texts, desc="Processing texts with chunking"):
+            # Split text into chunks
+            chunks = self.chunk_text(text)
+            
+            # Get embeddings for each chunk
+            chunk_embeddings = []
+            for i in range(0, len(chunks), batch_size):
+                batch = chunks[i:i+batch_size]
+                with torch.no_grad():
+                    if self.use_mixed_precision and torch.cuda.is_available():
+                        with torch.cuda.amp.autocast():
+                            batch_embeddings = embedding_model.encode(batch, normalize_embeddings=True, show_progress_bar=False)
+                    else:
+                        batch_embeddings = embedding_model.encode(batch, normalize_embeddings=True, show_progress_bar=False)
+                    chunk_embeddings.extend(batch_embeddings)
+            
+            # Average the chunk embeddings to get a single embedding for the text
+            if chunk_embeddings:
+                text_embedding = np.mean(chunk_embeddings, axis=0)
+                # Normalize the averaged embedding
+                text_embedding = text_embedding / np.linalg.norm(text_embedding)
+                all_embeddings.append(text_embedding)
+            else:
+                # Fallback for empty text
+                embedding_dim = 1024  # For BAAI/bge-large-en-v1.5
+                all_embeddings.append(np.zeros(embedding_dim))
+        
+        # Convert to numpy array
+        all_embeddings = np.array(all_embeddings)
+        
+        # Save embeddings with metadata
+        metadata = {
+            'created_at': str(datetime.datetime.now()),
+            'model_name': 'BAAI/bge-large-en-v1.5',
+            'embedding_dim': all_embeddings.shape[1],
+            'num_embeddings': len(texts),
+            'chunking_enabled': True,
+            'chunk_size': self.chunk_size,
+            'chunk_overlap': self.chunk_overlap
+        }
+        
+        if save_as_pickle(all_embeddings, output_file, metadata):
+            logging.info(f"Created and saved chunked embeddings to {output_file}")
+        else:
+            logging.error(f"Failed to save chunked embeddings to {output_file}")
+        
+        return all_embeddings
+    
     def optimize_relevance_threshold(self, k_values=[3, 5, 10]):
         """
         Find optimal relevance threshold by grid search.
@@ -2019,8 +2143,8 @@ class TFIDFEnhancedResumeScanner:
         
         return weighted_text
     
-    def create_embeddings(self, batch_size=32):
-        """Create TF-IDF weighted BGE embeddings with improved file finding."""
+    def create_embeddings(self, batch_size=32, use_chunking=True):
+        """Create TF-IDF weighted BGE embeddings with improved file finding and chunking support."""
         if self.df is None:
             raise ValueError("Data not loaded. Call load_data() first.")
         
@@ -2087,9 +2211,17 @@ class TFIDFEnhancedResumeScanner:
         for text in tqdm(self.df['embedding_text'].tolist(), desc="Applying TF-IDF weighting"):
             weighted_texts.append(self.apply_tfidf_weighting(text))
         
-        self.embeddings = self._create_embeddings(weighted_texts, 
-                                                embeddings_file, 
-                                                batch_size=batch_size)
+        # Choose embedding creation method based on use_chunking parameter
+        if use_chunking:
+            logging.info("Using chunking approach for long texts...")
+            self.embeddings = self.create_chunked_embeddings(weighted_texts, 
+                                                            embeddings_file, 
+                                                            batch_size=batch_size)
+        else:
+            logging.info("Using standard approach without chunking...")
+            self.embeddings = self._create_embeddings(weighted_texts, 
+                                                    embeddings_file, 
+                                                    batch_size=batch_size)
         
         return self.embeddings
     
@@ -2171,7 +2303,8 @@ class TFIDFEnhancedResumeScanner:
             'model_name': 'BAAI/bge-large-en-v1.5',
             'embedding_dim': embedding_dim,
             'num_embeddings': len(texts),
-            'batch_size_used': optimal_batch_size
+            'batch_size_used': optimal_batch_size,
+            'chunking_enabled': False
         }
         
         if save_as_pickle(all_embeddings, output_file, metadata):
@@ -2267,14 +2400,15 @@ class TFIDFEnhancedResumeScanner:
         
         return text
     
-    def match_text(self, text: str, top_n: int = 5, file_name: str = None) -> Dict:
+    def match_text(self, text: str, top_n: int = 5, file_name: str = None, use_chunking: bool = True) -> Dict:
         """
-        Match text against TF-IDF weighted BGE embeddings.
+        Match text against TF-IDF weighted BGE embeddings with chunking support.
         
         Args:
             text: Text to match
             top_n: Number of top matches to return
             file_name: Optional name of the file for output naming
+            use_chunking: Whether to use chunking for long texts
             
         Returns:
             Dictionary with results
@@ -2291,21 +2425,48 @@ class TFIDFEnhancedResumeScanner:
         # Check if embeddings exist
         if self.embeddings is None:
             logging.warning("Embeddings not found. Creating embeddings...")
-            self.create_embeddings()
+            self.create_embeddings(use_chunking=use_chunking)
         
         # Apply TF-IDF weighting to the query text
         weighted_text = self.apply_tfidf_weighting(text)
         
-        # Create embeddings for the weighted query text
         # Use fine-tuned model if available, otherwise use base model
         embedding_model = self.fine_tuned_model if self.fine_tuned_model is not None else self.model
         
-        with torch.no_grad():
-            if self.use_mixed_precision:
-                with torch.amp.autocast('cuda'):
-                    query_embedding = embedding_model.encode([weighted_text], normalize_embeddings=True)
+        # Create embeddings for the weighted query text with chunking if enabled
+        if use_chunking and len(weighted_text) > self.chunk_size * 4:  # Approximate character limit
+            logging.info("Query text is long, using chunking...")
+            chunks = self.chunk_text(weighted_text)
+            
+            # Get embeddings for each chunk
+            chunk_embeddings = []
+            with torch.no_grad():
+                for chunk in chunks:
+                    if self.use_mixed_precision and torch.cuda.is_available():
+                        with torch.cuda.amp.autocast():
+                            chunk_embedding = embedding_model.encode([chunk], normalize_embeddings=True)
+                    else:
+                        chunk_embedding = embedding_model.encode([chunk], normalize_embeddings=True)
+                    chunk_embeddings.append(chunk_embedding[0])
+            
+            # Average the chunk embeddings
+            if chunk_embeddings:
+                query_embedding = np.mean(chunk_embeddings, axis=0)
+                # Normalize the averaged embedding
+                query_embedding = query_embedding / np.linalg.norm(query_embedding)
+                query_embedding = query_embedding.reshape(1, -1)
             else:
-                query_embedding = embedding_model.encode([weighted_text], normalize_embeddings=True)
+                # Fallback for empty chunks
+                embedding_dim = 1024  # For BAAI/bge-large-en-v1.5
+                query_embedding = np.zeros((1, embedding_dim))
+        else:
+            # Standard embedding creation for short texts
+            with torch.no_grad():
+                if self.use_mixed_precision and torch.cuda.is_available():
+                    with torch.cuda.amp.autocast():
+                        query_embedding = embedding_model.encode([weighted_text], normalize_embeddings=True)
+                else:
+                    query_embedding = embedding_model.encode([weighted_text], normalize_embeddings=True)
         
         # Calculate similarities
         similarities = cosine_similarity(query_embedding, self.embeddings)[0]
@@ -2352,13 +2513,14 @@ class TFIDFEnhancedResumeScanner:
             'avg_similarity': avg_similarity
         }
     
-    def process_resume_file(self, file_path: str, top_n: int = 5) -> Dict:
+    def process_resume_file(self, file_path: str, top_n: int = 5, use_chunking: bool = True) -> Dict:
         """
-        Process a resume file and match it against the database.
+        Process a resume file and match it against the database with chunking support.
         
         Args:
             file_path: Path to the resume file
             top_n: Number of top matches to return
+            use_chunking: Whether to use chunking for long texts
             
         Returns:
             Dictionary with results
@@ -2388,8 +2550,8 @@ class TFIDFEnhancedResumeScanner:
             print(f"{Fore.MAGENTA}📄 PROCESSING RESUME: {file_path}")
             print(f"{Fore.MAGENTA}{'='*80}{Style.RESET_ALL}")
             
-            # Match against job titles
-            results = self.match_text(resume_text, top_n, file_path)
+            # Match against job titles with chunking support
+            results = self.match_text(resume_text, top_n, file_path, use_chunking=use_chunking)
             
             # Print results in a formatted way
             self._print_results(file_path, results)
@@ -2488,13 +2650,14 @@ class TFIDFEnhancedResumeScanner:
         
         logging.info(f"Generated visualization chart for {file_path}")
     
-    def scan_cv_folder(self, folder_path=None, top_n=5):
+    def scan_cv_folder(self, folder_path=None, top_n=5, use_chunking=True):
         """
-        Scan a folder for CV files and process each one.
+        Scan a folder for CV files and process each one with chunking support.
         
         Args:
             folder_path: Path to the folder containing CV files
             top_n: Number of top matches to return for each CV
+            use_chunking: Whether to use chunking for long texts
             
         Returns:
             Dictionary with results for each CV
@@ -2534,7 +2697,7 @@ class TFIDFEnhancedResumeScanner:
         for cv_file in cv_files:
             try:
                 print(f"\n{Fore.BLUE}Processing CV file: {os.path.basename(cv_file)}{Style.RESET_ALL}")
-                result = self.process_resume_file(cv_file, top_n)
+                result = self.process_resume_file(cv_file, top_n, use_chunking=use_chunking)
                 results[cv_file] = result
                 
                 # Add to summary data
@@ -2935,8 +3098,8 @@ if __name__ == "__main__":
         # Create TF-IDF vectors
         scanner.create_tfidf_vectors()
             
-        # Create embeddings
-        scanner.create_embeddings()
+        # Create embeddings with chunking enabled
+        scanner.create_embeddings(use_chunking=True)
         
         print(f"{Fore.GREEN}✅ Data and embeddings ready for processing{Style.RESET_ALL}")
         
@@ -2949,7 +3112,7 @@ if __name__ == "__main__":
         
         # Scan the CV folder if it exists and contains files
         if os.path.exists(cv_folder) and any(f.lower().endswith(('.pdf', '.docx', '.doc')) for f in os.listdir(cv_folder)):
-            results = scanner.scan_cv_folder()
+            results = scanner.scan_cv_folder(use_chunking=True)
             
             # Print a summary of the results
             print(f"\n{Fore.CYAN}{'='*80}")
