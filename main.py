@@ -407,8 +407,11 @@ async def startup_event():
         
         # Get Google Drive URL from environment variable or use default
         gdrive_url = os.getenv('GDRIVE_FOLDER_URL', 
-                              "https://drive.google.com/drive/folders/1jZ7d8cvFN8dczHAPBQpotGw2Mj6Hartd")
+                            "https://drive.google.com/drive/folders/1jZ7d8cvFN8dczHAPBQpotGw2Mj6Hartd")
         logging.info(f"Using Google Drive URL: {gdrive_url}")
+        
+        # Pass the parent directory (BASE_DIR) instead of OUTPUT_DIR
+        success = download_from_gdrive(gdrive_url, str(BASE_DIR))
         
         try:
             success = download_from_gdrive(gdrive_url, str(OUTPUT_DIR))
