@@ -2,23 +2,18 @@ version: '3'
 
 services:
   cvscan-api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8000:8000"
     volumes:
-      - ./input:/app/input:rw
-      - ./output:/app/output:rw
-      - ./cv_dummy:/app/cv_dummy:rw
+      # Mount the input, output, and cv_dummy directories
+      # This allows the container to access your pre-computed pickle files
+      - ./input:/app/input
+      - ./output:/app/output
+      - ./cv_dummy:/app/cv_dummy
+    restart: unless-stopped
     environment:
-      - PYTHONUNBUFFERED=1
-      - DEBUG=1
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-        reservations:
-          memory: 2G
-
-volumes:
-  model-data:
-    driver: local
+      # Add any environment variables here if needed
+      - TZ=UTC
