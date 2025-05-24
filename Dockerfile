@@ -15,22 +15,23 @@ RUN apt-get update && apt-get install -y \
     swig \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Install Python dependencies
 COPY requirements.txt .
-RUN pip install -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install requests for downloading files
+RUN pip install requests
 
 # Install specific numpy version that's compatible with the pickle files
 RUN pip uninstall -y numpy && pip install numpy==1.24.3
 
-# Install PyTorch with CUDA support
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-
 # Create necessary directories
 RUN mkdir -p input output cv_dummy
+RUN mkdir -p output/tfidf_enhanced_1748065889
 RUN chmod -R 777 input output cv_dummy
 
 # Copy the application code
-COPY main.py .
+COPY . .
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -39,5 +40,5 @@ ENV PYTHONPATH=/app
 # Expose the port
 EXPOSE 8000
 
-# Run the application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the scripts and then start the application
+CMD ["sh", "-c", "python download_pickle_files.py && python copy_pickle_files.py && uvicorn main:app --host 0.0.0.0 --port 8000"]
