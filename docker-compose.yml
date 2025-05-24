@@ -9,20 +9,15 @@ services:
       - ./input:/app/input:rw
       - ./output:/app/output:rw
       - ./cv_dummy:/app/cv_dummy:rw
-      - model-data:/app/models:rw
     environment:
       - PYTHONUNBUFFERED=1
       - DEBUG=1
     deploy:
       resources:
         limits:
-          memory: 8G
-        reservations:
           memory: 4G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
+        reservations:
+          memory: 2G
 
 volumes:
   model-data:

@@ -19,10 +19,11 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
-RUN pip install -r requirements.txt
 
-# Install PyTorch with CUDA support
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# Install dependencies but exclude sentence-transformers to avoid the huggingface_hub issue
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip uninstall -y sentence-transformers huggingface_hub \
+    && pip install --no-cache-dir scikit-learn pandas numpy matplotlib fastapi uvicorn python-multipart docx2txt PyPDF2 textract
 
 # Create necessary directories with proper permissions
 RUN mkdir -p input output cv_dummy models
@@ -31,10 +32,6 @@ RUN chmod -R 777 input output cv_dummy models
 # Copy the application code
 COPY . .
 
-# Add debugging code
-RUN echo "import os; print('Directories at startup:', os.listdir('/app'))" > /app/debug_startup.py
-RUN echo "import glob; print('PKL files:', glob.glob('/app/output/**/*.pkl', recursive=True))" >> /app/debug_startup.py
-
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
@@ -42,5 +39,5 @@ ENV PYTHONPATH=/app
 # Expose the port
 EXPOSE 8000
 
-# Command to run the application with debugging
-CMD ["sh", "-c", "python /app/debug_startup.py && uvicorn main:app --host 0.0.0.0 --port 8000"]
+# Command to run the lightweight API
+CMD ["uvicorn", "lightweight_api:app", "--host", "0.0.0.0", "--port", "8000"]
