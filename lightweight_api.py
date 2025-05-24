@@ -22,6 +22,8 @@ from sklearn.metrics.pairwise import cosine_similarity
 import docx2txt
 import PyPDF2
 import textract
+import numpy_fix
+from robust_pickle import robust_load_pickle
 
 # Configure logging
 logging.basicConfig(
@@ -87,8 +89,8 @@ class ErrorResponse(BaseModel):
 # Utility functions
 # Then replace the load_from_pickle function with:
 def load_from_pickle(file_path: str) -> Any:
-    """Load an object from a pickle file with version compatibility handling."""
-    return safe_load_pickle(file_path)
+    """Load an object from a pickle file with robust version compatibility handling."""
+    return robust_load_pickle(file_path)
 
 def find_latest_pickle_file(directory, filename_pattern):
     """Find the most recent pickle file matching the pattern in the directory tree"""
