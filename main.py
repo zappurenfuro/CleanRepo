@@ -350,24 +350,34 @@ def load_from_pickle(file_path: str) -> Any:
             logging.error(f"Pickle file does not exist: {file_path}")
             return None
         
-        # Check if file is compressed (gzip)
-        is_gzipped = False
-        try:
-            with open(file_path, 'rb') as f:
-                magic_number = f.read(2)
-                if magic_number == b'\x1f\x8b':  # gzip magic number
-                    is_gzipped = True
-        except:
-            pass
+        # Import our custom unpickler
+        from pickle_compat import safe_load_pickle
         
-        # Load the file
-        if is_gzipped:
-            import gzip
-            with gzip.open(file_path, 'rb') as f:
-                loaded_data = pickle.load(f)
-        else:
-            with open(file_path, 'rb') as f:
-                loaded_data = pickle.load(f)
+        # Try loading with custom unpickler first
+        logging.info(f"Attempting to load pickle file with custom unpickler: {file_path}")
+        loaded_data = safe_load_pickle(file_path)
+        
+        if loaded_data is None:
+            # Fall back to standard pickle if custom unpickler fails
+            logging.info(f"Custom unpickler failed, trying standard pickle: {file_path}")
+            # Check if file is compressed (gzip)
+            is_gzipped = False
+            try:
+                with open(file_path, 'rb') as f:
+                    magic_number = f.read(2)
+                    if magic_number == b'\x1f\x8b':  # gzip magic number
+                        is_gzipped = True
+            except:
+                pass
+            
+            # Load the file
+            if is_gzipped:
+                import gzip
+                with gzip.open(file_path, 'rb') as f:
+                    loaded_data = pickle.load(f)
+            else:
+                with open(file_path, 'rb') as f:
+                    loaded_data = pickle.load(f)
         
         # Check if the loaded data has metadata
         if isinstance(loaded_data, dict) and 'data' in loaded_data and 'metadata' in loaded_data:
@@ -727,6 +737,64 @@ async def scan_file(file: UploadFile = File(...), top_n: int = Form(5)):
     finally:
         if os.path.exists(temp_file_path):
             os.unlink(temp_file_path)
+
+@app.get("/debug/pickle-files")
+async def debug_pickle_files():
+    """Debug endpoint to check pickle files and their loading status"""
+    import glob
+    
+    # Find all pickle files
+    pickle_files = glob.glob(str(OUTPUT_DIR) + "/**/*.pkl", recursive=True)
+    
+    results = []
+    for file_path in pickle_files:
+        try:
+            # Try to load the file
+            with open(file_path, 'rb') as f:
+                # Just read the first few bytes to check if it's a valid pickle
+                header = f.read(10)
+                is_valid_pickle = header.startswith(b'\x80\x03') or header.startswith(b'\x80\x04') or header.startswith(b'\x80\x05')
+            
+            # Get file size and modification time
+            file_stat = os.stat(file_path)
+            file_size = file_stat.st_size
+            mod_time = time.ctime(file_stat.st_mtime)
+            
+            results.append({
+                "file_path": file_path,
+                "file_size": file_size,
+                "modified": mod_time,
+                "is_valid_pickle": is_valid_pickle,
+                "status": "Found"
+            })
+        except Exception as e:
+            results.append({
+                "file_path": file_path,
+                "error": str(e),
+                "status": "Error"
+            })
+    
+    # Also check the specific files we're looking for
+    required_files = [
+        str(OUTPUT_DIR / "processed_resumes.pkl"),
+        str(OUTPUT_DIR / "tfidf_enhanced_1748065889/tfidf_bge_embeddings.pkl"),
+        str(OUTPUT_DIR / "tfidf_enhanced_1748065889/tfidf_vectorizer.pkl"),
+        str(OUTPUT_DIR / "tfidf_enhanced_1748065889/tfidf_matrix.pkl")
+    ]
+    
+    for file_path in required_files:
+        if file_path not in [r["file_path"] for r in results]:
+            results.append({
+                "file_path": file_path,
+                "status": "Missing"
+            })
+    
+    return {
+        "pickle_files": results,
+        "numpy_version": np.__version__,
+        "python_version": sys.version,
+        "output_dir": str(OUTPUT_DIR)
+    }
 
 # Startup event
 @app.on_event("startup")
