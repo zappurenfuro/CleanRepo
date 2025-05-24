@@ -8,12 +8,8 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      # Mount the input, output, and cv_dummy directories
-      # This allows the container to access your pre-computed pickle files
-      - ./input:/app/input
-      - ./output:/app/output
-      - ./cv_dummy:/app/cv_dummy
+      # Mount the entire directory to ensure all paths are preserved
+      - .:/app
     restart: unless-stopped
     environment:
-      # Add any environment variables here if needed
       - TZ=UTC

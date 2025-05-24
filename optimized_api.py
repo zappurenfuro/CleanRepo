@@ -294,14 +294,36 @@ def find_most_recent_pickle_files():
     """Find the most recent pickle files in the output directory."""
     global OUTPUT_DIR
     
-    # Find all tfidf_enhanced directories
+    logging.info(f"Searching for pickle files in {OUTPUT_DIR}")
+    
+    # Find processed_resumes.pkl in the output directory
+    processed_resumes_file = OUTPUT_DIR / "processed_resumes.pkl"
+    if not processed_resumes_file.exists():
+        logging.warning(f"Processed resumes file not found at: {processed_resumes_file}")
+        # Try to find it elsewhere
+        processed_resumes_files = list(OUTPUT_DIR.glob("**/processed_resumes.pkl"))
+        if processed_resumes_files:
+            processed_resumes_file = processed_resumes_files[0]
+            logging.info(f"Found processed_resumes.pkl at: {processed_resumes_file}")
+        else:
+            logging.error("Could not find processed_resumes.pkl anywhere in the output directory")
+            processed_resumes_file = None
+    
+    # Find tfidf_enhanced directories
     tfidf_dirs = []
     for item in OUTPUT_DIR.glob("tfidf_enhanced_*"):
         if item.is_dir():
             tfidf_dirs.append(item)
     
     if not tfidf_dirs:
-        logging.warning("No tfidf_enhanced directories found in output directory")
+        logging.warning(f"No tfidf_enhanced directories found directly in {OUTPUT_DIR}")
+        # Try to find them in subdirectories
+        for item in OUTPUT_DIR.glob("**/tfidf_enhanced_*"):
+            if item.is_dir():
+                tfidf_dirs.append(item)
+    
+    if not tfidf_dirs:
+        logging.error("No tfidf_enhanced directories found anywhere in the output directory")
         return None, None, None, None
     
     # Sort by modification time (most recent first)
@@ -309,34 +331,39 @@ def find_most_recent_pickle_files():
     most_recent_dir = tfidf_dirs[0]
     logging.info(f"Using most recent directory: {most_recent_dir}")
     
-    # Find pickle files
-    processed_resumes_file = OUTPUT_DIR / "processed_resumes.pkl"
+    # Find pickle files in the most recent directory
     embeddings_file = most_recent_dir / "tfidf_bge_embeddings.pkl"
     tfidf_vectorizer_file = most_recent_dir / "tfidf_vectorizer.pkl"
     tfidf_matrix_file = most_recent_dir / "tfidf_matrix.pkl"
     
     # Check if files exist
-    if not processed_resumes_file.exists():
-        logging.warning(f"Processed resumes file not found: {processed_resumes_file}")
-    else:
-        logging.info(f"Found processed_resumes_file: {processed_resumes_file}")
-    
     if not embeddings_file.exists():
-        logging.warning(f"Embeddings file not found: {embeddings_file}")
+        logging.error(f"Embeddings file not found: {embeddings_file}")
+        embeddings_file = None
     else:
         logging.info(f"Found embeddings_file: {embeddings_file}")
     
     if not tfidf_vectorizer_file.exists():
-        logging.warning(f"TF-IDF vectorizer file not found: {tfidf_vectorizer_file}")
+        logging.error(f"TF-IDF vectorizer file not found: {tfidf_vectorizer_file}")
+        tfidf_vectorizer_file = None
     else:
         logging.info(f"Found tfidf_vectorizer_file: {tfidf_vectorizer_file}")
     
     if not tfidf_matrix_file.exists():
-        logging.warning(f"TF-IDF matrix file not found: {tfidf_matrix_file}")
+        logging.error(f"TF-IDF matrix file not found: {tfidf_matrix_file}")
+        tfidf_matrix_file = None
     else:
         logging.info(f"Found tfidf_matrix_file: {tfidf_matrix_file}")
     
+    # Log the full paths for debugging
+    logging.info(f"Full paths of pickle files:")
+    logging.info(f"  processed_resumes_file: {processed_resumes_file}")
+    logging.info(f"  embeddings_file: {embeddings_file}")
+    logging.info(f"  tfidf_vectorizer_file: {tfidf_vectorizer_file}")
+    logging.info(f"  tfidf_matrix_file: {tfidf_matrix_file}")
+    
     return processed_resumes_file, embeddings_file, tfidf_vectorizer_file, tfidf_matrix_file
+
 
 def load_precomputed_data():
     """Load precomputed data from pickle files."""
