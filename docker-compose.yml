@@ -6,24 +6,14 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./input:/app/input:rw
-      - ./output:/app/output:rw
-      - ./cv_dummy:/app/cv_dummy:rw
-      - model-data:/app/models:rw
+      # Mount the entire directory to ensure all paths are preserved
+      - .:/app
     environment:
       - PYTHONUNBUFFERED=1
-      - DEBUG=1
+    restart: unless-stopped
     deploy:
       resources:
         limits:
-          memory: 8G
-        reservations:
           memory: 4G
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-
-volumes:
-  model-data:
-    driver: local
+        reservations:
+          memory: 2G

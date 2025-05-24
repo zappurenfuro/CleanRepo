@@ -388,25 +388,29 @@ def load_from_pickle(file_path: str) -> Any:
         return None
 
 def find_pickle_files():
-    """Find the pickle files in the output directory."""
+    """Find the pickle files in the output directory with recursive search."""
     global OUTPUT_DIR, results_dir
     
     logging.info(f"Searching for pickle files in {OUTPUT_DIR}")
     
-    # Find processed_resumes.pkl
-    processed_resumes_file = OUTPUT_DIR / "processed_resumes.pkl"
-    if not processed_resumes_file.exists():
-        logging.error(f"Processed resumes file not found: {processed_resumes_file}")
+    # Find processed_resumes.pkl with recursive search
+    processed_resumes_files = list(Path(OUTPUT_DIR).glob("**/processed_resumes.pkl"))
+    if not processed_resumes_files:
+        logging.error(f"Processed resumes file not found anywhere in {OUTPUT_DIR}")
         return None, None, None, None
     
-    # Find tfidf_enhanced directories
+    # Use the first one found
+    processed_resumes_file = processed_resumes_files[0]
+    logging.info(f"Found processed_resumes.pkl at: {processed_resumes_file}")
+    
+    # Find tfidf_enhanced directories with recursive search
     tfidf_dirs = []
-    for item in OUTPUT_DIR.glob("tfidf_enhanced_*"):
+    for item in Path(OUTPUT_DIR).glob("**/tfidf_enhanced_*"):
         if item.is_dir():
             tfidf_dirs.append(item)
     
     if not tfidf_dirs:
-        logging.error("No tfidf_enhanced directories found in output directory")
+        logging.error(f"No tfidf_enhanced directories found anywhere in {OUTPUT_DIR}")
         return None, None, None, None
     
     # Sort by modification time (most recent first)
@@ -425,14 +429,20 @@ def find_pickle_files():
     if not embeddings_file.exists():
         logging.error(f"Embeddings file not found: {embeddings_file}")
         files_exist = False
+    else:
+        logging.info(f"Found embeddings file: {embeddings_file}")
     
     if not tfidf_vectorizer_file.exists():
         logging.error(f"TF-IDF vectorizer file not found: {tfidf_vectorizer_file}")
         files_exist = False
+    else:
+        logging.info(f"Found TF-IDF vectorizer file: {tfidf_vectorizer_file}")
     
     if not tfidf_matrix_file.exists():
         logging.error(f"TF-IDF matrix file not found: {tfidf_matrix_file}")
         files_exist = False
+    else:
+        logging.info(f"Found TF-IDF matrix file: {tfidf_matrix_file}")
     
     if not files_exist:
         return None, None, None, None
