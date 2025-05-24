@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies for textract and PyTorch
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
     libpoppler-cpp-dev \
@@ -13,23 +13,25 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     libjpeg-dev \
     swig \
-    git \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    fastapi \
+    uvicorn \
+    python-multipart \
+    pandas \
+    numpy \
+    scikit-learn \
+    matplotlib \
+    docx2txt \
+    PyPDF2 \
+    textract \
+    pydantic
 
-# Install dependencies but exclude sentence-transformers to avoid the huggingface_hub issue
-# Install specific numpy version for pickle compatibility
-RUN pip install --no-cache-dir -r requirements.txt \
-    && pip uninstall -y sentence-transformers huggingface_hub numpy \
-    && pip install --no-cache-dir numpy==1.24.3 \
-    && pip install --no-cache-dir scikit-learn pandas matplotlib fastapi uvicorn python-multipart docx2txt PyPDF2 textract scipy
-
-# Create necessary directories with proper permissions
-RUN mkdir -p input output cv_dummy models
-RUN chmod -R 777 input output cv_dummy models
+# Create necessary directories
+RUN mkdir -p input output cv_dummy
+RUN chmod -R 777 input output cv_dummy
 
 # Copy the application code
 COPY . .
@@ -41,5 +43,5 @@ ENV PYTHONPATH=/app
 # Expose the port
 EXPOSE 8000
 
-# Command to run the lightweight API
-CMD ["uvicorn", "lightweight_api:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the simple API
+CMD ["uvicorn", "simple_api:app", "--host", "0.0.0.0", "--port", "8000"]
