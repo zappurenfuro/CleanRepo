@@ -407,7 +407,7 @@ async def startup_event():
         
         # Get Google Drive URL from environment variable or use default
         gdrive_url = os.getenv('GDRIVE_FOLDER_URL', 
-                            "https://drive.google.com/drive/folders/1jZ7d8cvFN8dczHAPBQpotGw2Mj6Hartd")
+                            "https://drive.google.com/drive/folders/1Jg5CPVjM2sC8JmFPzzmNpwPK9Ha14LCo?usp=sharing")
         logging.info(f"Using Google Drive URL: {gdrive_url}")
         
         # Pass the parent directory (BASE_DIR) instead of OUTPUT_DIR

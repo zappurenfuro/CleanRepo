@@ -13,7 +13,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - DEBUG=1
-      - GDRIVE_FOLDER_URL=https://drive.google.com/drive/folders/1jZ7d8cvFN8dczHAPBQpotGw2Mj6Hartd
+      - GDRIVE_FOLDER_URL=https://drive.google.com/drive/folders/1Jg5CPVjM2sC8JmFPzzmNpwPK9Ha14LCo?usp=sharing
     deploy:
       resources:
         limits:
