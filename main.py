@@ -39,13 +39,13 @@ def debug_paths():
                 tfidf_dirs.append(tfidf_dir)
                 print(f"  Found: {tfidf_dir}")
     
-    # Check for embedding files
+    # Check for embedding files (both PKL and JSON)
     print("\nSearching for embedding files:")
     embedding_files = []
     for tfidf_dir in tfidf_dirs:
         for root, dirs, files in os.walk(tfidf_dir):
             for file in files:
-                if file == "tfidf_bge_embeddings.pkl":
+                if file == "tfidf_bge_embeddings.pkl" or file == "tfidf_bge_embeddings.json":
                     embedding_file = os.path.join(root, file)
                     embedding_files.append(embedding_file)
                     print(f"  Found: {embedding_file}")
@@ -64,8 +64,6 @@ def debug_paths():
             print(f"  ERROR reading {embedding_file}: {str(e)}")
     
     print("\n===== END PATH DEBUGGING =====")
-
-# Add this to your main.py's startup_event function
 
 # Configure logging
 logging.basicConfig(
@@ -141,6 +139,7 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     model_loaded: bool
+    file_format: str
 
 class MatchResult(BaseModel):
     title: str
@@ -159,10 +158,25 @@ class ErrorResponse(BaseModel):
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Check if the API is running and the model is loaded"""
+    # Determine which file format is being used
+    file_format = "unknown"
+    if scanner is not None:
+        # Check if the results directory exists
+        if hasattr(scanner, 'results_dir') and os.path.exists(scanner.results_dir):
+            # Check for JSON files
+            json_files = glob.glob(os.path.join(scanner.results_dir, "*.json"))
+            pkl_files = glob.glob(os.path.join(scanner.results_dir, "*.pkl"))
+            
+            if json_files:
+                file_format = "json"
+            elif pkl_files:
+                file_format = "pkl"
+    
     return {
         "status": "ok",
         "version": "1.0.0",
-        "model_loaded": scanner is not None
+        "model_loaded": scanner is not None,
+        "file_format": file_format
     }
 
 @app.post("/initialize", response_model=dict)
@@ -340,6 +354,42 @@ async def evaluate_model(k_values: List[int] = [3, 5, 10], relevance_threshold: 
         logging.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
+# Add a new endpoint to check file formats
+@app.get("/check/file-formats")
+async def check_file_formats():
+    """Check which file formats are available in the output directory"""
+    try:
+        formats = {
+            "json": [],
+            "pkl": []
+        }
+        
+        # Search for files in the output directory
+        for root, dirs, files in os.walk(str(OUTPUT_DIR)):
+            for file in files:
+                file_path = os.path.join(root, file)
+                if file.endswith('.json'):
+                    formats["json"].append({
+                        "path": file_path,
+                        "size_mb": os.path.getsize(file_path) / (1024 * 1024),
+                        "modified": os.path.getmtime(file_path)
+                    })
+                elif file.endswith('.pkl'):
+                    formats["pkl"].append({
+                        "path": file_path,
+                        "size_mb": os.path.getsize(file_path) / (1024 * 1024),
+                        "modified": os.path.getmtime(file_path)
+                    })
+        
+        return {
+            "json_files": len(formats["json"]),
+            "pkl_files": len(formats["pkl"]),
+            "details": formats
+        }
+    except Exception as e:
+        logging.error(f"Error checking file formats: {str(e)}")
+        return {"error": str(e)}
+
 # Startup event to initialize the scanner
 @app.on_event("startup")
 async def startup_event():
@@ -356,12 +406,19 @@ async def startup_event():
         logging.info(f"Input directory exists: {os.path.exists(str(INPUT_DIR))}")
         logging.info(f"Output directory exists: {os.path.exists(str(OUTPUT_DIR))}")
         
-        # List all PKL files in the output directory
+        # List all PKL and JSON files in the output directory
         pkl_files = glob.glob(str(OUTPUT_DIR / "**/*.pkl"), recursive=True)
+        json_files = glob.glob(str(OUTPUT_DIR / "**/*.json"), recursive=True)
+        
         logging.info(f"Found {len(pkl_files)} PKL files in output directory")
         for pkl_file in pkl_files:
             file_size = os.path.getsize(pkl_file) / (1024 * 1024)
             logging.info(f"  {pkl_file} ({file_size:.2f} MB)")
+        
+        logging.info(f"Found {len(json_files)} JSON files in output directory")
+        for json_file in json_files:
+            file_size = os.path.getsize(json_file) / (1024 * 1024)
+            logging.info(f"  {json_file} ({file_size:.2f} MB)")
     except Exception as e:
         logging.error(f"Error in path debugging: {str(e)}")
     
