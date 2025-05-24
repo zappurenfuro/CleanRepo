@@ -24,16 +24,15 @@ RUN pip install -r requirements.txt
 # Install PyTorch with CUDA support
 RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 
+# Install gdown for Google Drive downloads
+RUN pip install gdown>=4.7.1
+
 # Create necessary directories with proper permissions
 RUN mkdir -p input output cv_dummy models
 RUN chmod -R 777 input output cv_dummy models
 
 # Copy the application code
 COPY . .
-
-# Add debugging code
-RUN echo "import os; print('Directories at startup:', os.listdir('/app'))" > /app/debug_startup.py
-RUN echo "import glob; print('PKL files:', glob.glob('/app/output/**/*.pkl', recursive=True))" >> /app/debug_startup.py
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
@@ -42,5 +41,5 @@ ENV PYTHONPATH=/app
 # Expose the port
 EXPOSE 8000
 
-# Command to run the application with debugging
-CMD ["sh", "-c", "python /app/debug_startup.py && uvicorn main:app --host 0.0.0.0 --port 8000"]
+# Command to run the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

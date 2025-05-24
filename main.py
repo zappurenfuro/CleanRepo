@@ -390,7 +390,9 @@ async def check_file_formats():
         logging.error(f"Error checking file formats: {str(e)}")
         return {"error": str(e)}
 
-# Startup event to initialize the scanner
+from download_data import check_data_exists, download_from_gdrive, setup_data_directories
+
+# Update your startup_event function
 @app.on_event("startup")
 async def startup_event():
     # Check if input directories exist
@@ -398,6 +400,33 @@ async def startup_event():
         if not directory.exists():
             directory.mkdir(parents=True, exist_ok=True)
             logging.info(f"Created directory: {directory}")
+
+    # Check if data files exist
+    if not check_data_exists(str(OUTPUT_DIR)):
+        logging.info("No data files found. Downloading from Google Drive...")
+        
+        # Get Google Drive URL from environment variable or use default
+        gdrive_url = os.getenv('GDRIVE_FOLDER_URL', 
+                              "https://drive.google.com/drive/folders/1jZ7d8cvFN8dczHAPBQpotGw2Mj6Hartd")
+        logging.info(f"Using Google Drive URL: {gdrive_url}")
+        
+        try:
+            success = download_from_gdrive(gdrive_url, str(OUTPUT_DIR))
+            if success:
+                logging.info("Successfully downloaded all data files")
+                
+                # Verify the downloaded files
+                if check_data_exists(str(OUTPUT_DIR)):
+                    logging.info("Verified downloaded files are present and correct")
+                else:
+                    logging.warning("Download reported success but files are not found. Check permissions.")
+            else:
+                logging.warning("Failed to download data files. The application may not work correctly.")
+        except Exception as e:
+            logging.error(f"Error during download: {str(e)}")
+            logging.error(traceback.format_exc())
+    else:
+        logging.info("Found existing data files")
     
     # Debug paths and file existence
     try:
