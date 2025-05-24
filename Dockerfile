@@ -21,9 +21,11 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 
 # Install dependencies but exclude sentence-transformers to avoid the huggingface_hub issue
+# Install specific numpy version for pickle compatibility
 RUN pip install --no-cache-dir -r requirements.txt \
-    && pip uninstall -y sentence-transformers huggingface_hub \
-    && pip install --no-cache-dir scikit-learn pandas numpy matplotlib fastapi uvicorn python-multipart docx2txt PyPDF2 textract
+    && pip uninstall -y sentence-transformers huggingface_hub numpy \
+    && pip install --no-cache-dir numpy==1.24.3 \
+    && pip install --no-cache-dir scikit-learn pandas matplotlib fastapi uvicorn python-multipart docx2txt PyPDF2 textract scipy
 
 # Create necessary directories with proper permissions
 RUN mkdir -p input output cv_dummy models

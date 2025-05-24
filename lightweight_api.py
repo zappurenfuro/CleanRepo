@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
+from pickle_fix import safe_load_pickle
 import os
 import tempfile
 import shutil
@@ -84,44 +85,10 @@ class ErrorResponse(BaseModel):
     details: Optional[str] = None
 
 # Utility functions
+# Then replace the load_from_pickle function with:
 def load_from_pickle(file_path: str) -> Any:
-    """Load an object from a pickle file."""
-    try:
-        if not os.path.exists(file_path):
-            logging.error(f"Pickle file does not exist: {file_path}")
-            return None
-        
-        # Check if file is compressed (gzip)
-        is_gzipped = False
-        try:
-            with open(file_path, 'rb') as f:
-                magic_number = f.read(2)
-                if magic_number == b'\x1f\x8b':  # gzip magic number
-                    is_gzipped = True
-        except:
-            pass
-        
-        # Load the file
-        if is_gzipped:
-            import gzip
-            with gzip.open(file_path, 'rb') as f:
-                loaded_data = pickle.load(f)
-        else:
-            with open(file_path, 'rb') as f:
-                loaded_data = pickle.load(f)
-        
-        # Check if the loaded data has metadata
-        if isinstance(loaded_data, dict) and 'data' in loaded_data and 'metadata' in loaded_data:
-            logging.info(f"Loaded pickle file with metadata: {file_path}")
-            return loaded_data['data']
-        else:
-            logging.info(f"Loaded pickle file: {file_path}")
-            return loaded_data
-            
-    except Exception as e:
-        logging.error(f"Error loading pickle file {file_path}: {str(e)}")
-        logging.error(traceback.format_exc())
-        return None
+    """Load an object from a pickle file with version compatibility handling."""
+    return safe_load_pickle(file_path)
 
 def find_latest_pickle_file(directory, filename_pattern):
     """Find the most recent pickle file matching the pattern in the directory tree"""
