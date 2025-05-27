@@ -1912,7 +1912,6 @@ class TFIDFEnhancedResumeScanner:
         required_files = [
             '01_people.csv',
             '02_abilities.csv',
-            '03_education.csv',
             '04_experience.csv',
             '05_person_skills.csv'
         ]
@@ -3175,7 +3174,7 @@ if __name__ == "__main__":
             # Check if input files exist
             input_files_exist = all(
                 os.path.exists(os.path.join(input_folder, f)) 
-                for f in ['01_people.csv', '02_abilities.csv', '03_education.csv', '04_experience.csv', '05_person_skills.csv']
+                for f in ['01_people.csv', '02_abilities.csv', '04_experience.csv', '05_person_skills.csv']
             )
             
             if not input_files_exist:
