@@ -17,9 +17,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: 8G
+          memory: 6G
         reservations:
-          memory: 4G
+          memory: 1G
 
 volumes:
   model-data:
